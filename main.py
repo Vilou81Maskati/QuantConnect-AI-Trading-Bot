@@ -7,6 +7,7 @@ from risk_manager import RiskManager
 from trade_manager import TradeManager
 from portfolio_manager import PortfolioManager
 from statistics import StatisticsTracker
+from market_regime import MarketRegime
 
 
 class QuantResearchStrategy(QCAlgorithm):
@@ -20,7 +21,6 @@ class QuantResearchStrategy(QCAlgorithm):
         self.config = Config
 
         self.SetStartDate(2020, 1, 1)
-
         self.SetEndDate(2026, 8, 1)
 
         self.SetCash(
@@ -28,7 +28,7 @@ class QuantResearchStrategy(QCAlgorithm):
         )
 
         # ==========================================================
-        # INITIALISATION
+        # VARIABLES PRINCIPALES
         # ==========================================================
 
         self.symbols = []
@@ -56,49 +56,62 @@ class QuantResearchStrategy(QCAlgorithm):
                 symbol
             )
 
-            self.indicators[symbol] = (
-                IndicatorSet(
-                    self,
-                    symbol,
-                    self.config
-                )
+            self.indicators[symbol] = IndicatorSet(
+                self,
+                symbol,
+                self.config
             )
 
         # ==========================================================
-        # MODULES
+        # MODULE DE SIGNAL
         # ==========================================================
 
-        self.signal_engine = (
-            SignalEngine(
-                self.config
-            )
+        self.signal_engine = SignalEngine(
+            self.config
         )
 
-        self.risk_manager = (
-            RiskManager(
-                self,
-                self.config
-            )
+        # ==========================================================
+        # GESTION DU RISQUE
+        # ==========================================================
+
+        self.risk_manager = RiskManager(
+            self,
+            self.config
         )
 
-        self.trade_manager = (
-            TradeManager(
-                self,
-                self.config
-            )
+        # ==========================================================
+        # GESTION DES TRADES
+        # ==========================================================
+
+        self.trade_manager = TradeManager(
+            self,
+            self.config
         )
 
-        self.portfolio_manager = (
-            PortfolioManager(
-                self,
-                self.config
-            )
+        # ==========================================================
+        # GESTION DU PORTEFEUILLE
+        # ==========================================================
+
+        self.portfolio_manager = PortfolioManager(
+            self,
+            self.config
         )
 
-        self.statistics = (
-            StatisticsTracker(
-                self
-            )
+        # ==========================================================
+        # STATISTIQUES
+        # ==========================================================
+
+        self.statistics = StatisticsTracker(
+            self
+        )
+
+        # ==========================================================
+        # REGIME DE MARCHE
+        # ==========================================================
+
+        self.market_regime = MarketRegime(
+            self,
+            self.config
         )
 
         # ==========================================================
@@ -117,39 +130,27 @@ class QuantResearchStrategy(QCAlgorithm):
         self.last_execution = None
 
         # ==========================================================
-        # RESET QUOTIDIEN DU RISQUE
+        # RESET RISQUE QUOTIDIEN
         # ==========================================================
 
         self.Schedule.On(
-
             self.DateRules.EveryDay(),
-
-            self.TimeRules.At(
-                9,
-                35
-            ),
-
+            self.TimeRules.At(9, 35),
             self.ResetDailyRisk
         )
 
         # ==========================================================
-        # RAPPORT JOURNALIER
+        # RAPPORT QUOTIDIEN
         # ==========================================================
 
         self.Schedule.On(
-
             self.DateRules.EveryDay(),
-
-            self.TimeRules.At(
-                15,
-                55
-            ),
-
+            self.TimeRules.At(15, 55),
             self.DailyReport
         )
 
     # ==============================================================
-    # RESET RISQUE
+    # RESET DU RISQUE
     # ==============================================================
 
     def ResetDailyRisk(self):
@@ -157,13 +158,10 @@ class QuantResearchStrategy(QCAlgorithm):
         self.risk_manager.ResetDailyRisk()
 
     # ==============================================================
-    # DONNEES MARCHE
+    # RECEPTION DES DONNEES
     # ==============================================================
 
-    def OnData(
-        self,
-        data
-    ):
+    def OnData(self, data):
 
         # ----------------------------------------------------------
         # WARMUP
@@ -174,20 +172,16 @@ class QuantResearchStrategy(QCAlgorithm):
             return
 
         # ----------------------------------------------------------
-        # MISE A JOUR DES PRIX
+        # MISE A JOUR DES INDICATEURS
         # ----------------------------------------------------------
 
         for symbol in self.symbols:
 
-            if symbol not in data.Bars:
+            if not data.Bars.ContainsKey(symbol):
 
                 continue
 
-            security = (
-                self.Securities[
-                    symbol
-                ]
-            )
+            security = self.Securities[symbol]
 
             if not security.HasData:
 
@@ -206,7 +200,7 @@ class QuantResearchStrategy(QCAlgorithm):
         self.risk_manager.UpdatePeak()
 
         # ----------------------------------------------------------
-        # VERIFICATION RISQUE
+        # VERIFICATION DES LIMITES
         # ----------------------------------------------------------
 
         if not self.risk_manager.CheckRiskLimits():
@@ -224,7 +218,7 @@ class QuantResearchStrategy(QCAlgorithm):
         self.ManageOpenPositions()
 
         # ----------------------------------------------------------
-        # NOUVELLES POSITIONS
+        # RECHERCHE DE NOUVELLES ENTREES
         # ----------------------------------------------------------
 
         self.LookForEntries()
@@ -236,7 +230,7 @@ class QuantResearchStrategy(QCAlgorithm):
         self.statistics.UpdatePortfolioValue()
 
     # ==============================================================
-    # GESTION DES POSITIONS EXISTANTES
+    # GESTION DES POSITIONS OUVERTES
     # ==============================================================
 
     def ManageOpenPositions(self):
@@ -244,7 +238,7 @@ class QuantResearchStrategy(QCAlgorithm):
         for symbol in self.symbols:
 
             # ------------------------------------------------------
-            # PAS DE POSITION
+            # POSITION INACTIVE
             # ------------------------------------------------------
 
             if not self.Portfolio[
@@ -253,19 +247,15 @@ class QuantResearchStrategy(QCAlgorithm):
 
                 continue
 
-            indicator = (
-                self.indicators[
-                    symbol
-                ]
-            )
-
             # ------------------------------------------------------
-            # INDICATEURS NON PRETS
+            # INDICATEURS
             # ------------------------------------------------------
 
-            features = (
-                indicator.GetFeatures()
-            )
+            indicator = self.indicators[
+                symbol
+            ]
+
+            features = indicator.GetFeatures()
 
             if features is None:
 
@@ -275,28 +265,29 @@ class QuantResearchStrategy(QCAlgorithm):
             # PRIX
             # ------------------------------------------------------
 
-            price = (
-                features[
-                    "price"
-                ]
-            )
-
-            atr = (
-                features[
-                    "atr"
-                ]
+            price = float(
+                features["price"]
             )
 
             # ------------------------------------------------------
-            # MISE A JOUR TRADE
+            # ATR
+            # ------------------------------------------------------
+
+            atr = float(
+                features["atr"]
+            )
+
+            if price <= 0 or atr <= 0:
+
+                continue
+
+            # ------------------------------------------------------
+            # MISE A JOUR DU TRADE
             # ------------------------------------------------------
 
             self.trade_manager.UpdateTrade(
-
                 symbol,
-
                 price,
-
                 atr
             )
 
@@ -304,34 +295,35 @@ class QuantResearchStrategy(QCAlgorithm):
             # VERIFICATION SORTIE
             # ------------------------------------------------------
 
-            reason = (
-                self.trade_manager.CheckExit(
-
-                    symbol,
-
-                    features,
-
-                    self.signal_engine
-                )
+            reason = self.trade_manager.CheckExit(
+                symbol,
+                features,
+                self.signal_engine
             )
 
             if reason is not None:
 
                 self.ClosePosition(
-
                     symbol,
-
                     reason
                 )
 
     # ==============================================================
-    # RECHERCHE DE NOUVELLES ENTREES
+    # RECHERCHE DE NOUVELLES POSITIONS
     # ==============================================================
 
     def LookForEntries(self):
 
         # ----------------------------------------------------------
-        # VERIFICATION DES PLACES
+        # FILTRE DE REGIME
+        # ----------------------------------------------------------
+
+        if not self.market_regime.AllowLongEntries():
+
+            return
+
+        # ----------------------------------------------------------
+        # PLACES DISPONIBLES
         # ----------------------------------------------------------
 
         available_slots = (
@@ -346,17 +338,14 @@ class QuantResearchStrategy(QCAlgorithm):
             return
 
         # ----------------------------------------------------------
-        # CONSTRUCTION DES CANDIDATS
+        # CREATION DES CANDIDATS
         # ----------------------------------------------------------
 
         candidates = (
             self.portfolio_manager
             .BuildCandidates(
-
                 self.symbols,
-
                 self.indicators,
-
                 self.signal_engine
             )
         )
@@ -366,21 +355,23 @@ class QuantResearchStrategy(QCAlgorithm):
             return
 
         # ----------------------------------------------------------
-        # SELECTION
+        # CLASSEMENT
         # ----------------------------------------------------------
 
         selected = (
             self.portfolio_manager
             .SelectCandidates(
-
                 candidates,
-
                 available_slots
             )
         )
 
+        if not selected:
+
+            return
+
         # ----------------------------------------------------------
-        # OUVERTURE
+        # OUVERTURE DES POSITIONS
         # ----------------------------------------------------------
 
         for candidate in selected:
@@ -390,58 +381,49 @@ class QuantResearchStrategy(QCAlgorithm):
             )
 
     # ==============================================================
-    # OUVERTURE POSITION
+    # OUVERTURE D'UNE POSITION
     # ==============================================================
 
-    def OpenPosition(
-        self,
-        candidate
-    ):
+    def OpenPosition(self, candidate):
 
-        symbol = (
-            candidate[
-                "symbol"
-            ]
-        )
+        symbol = candidate["symbol"]
 
-        features = (
-            candidate[
-                "features"
-            ]
-        )
+        features = candidate["features"]
 
-        score = (
-            candidate[
-                "score"
-            ]
-        )
+        score = candidate["score"]
 
         # ----------------------------------------------------------
         # PRIX
         # ----------------------------------------------------------
 
-        price = (
-            features[
-                "price"
-            ]
-        )
-
-        atr = (
-            features[
-                "atr"
-            ]
+        price = float(
+            features["price"]
         )
 
         # ----------------------------------------------------------
-        # QUANTITE
+        # ATR
+        # ----------------------------------------------------------
+
+        atr = float(
+            features["atr"]
+        )
+
+        if price <= 0:
+
+            return
+
+        if atr <= 0:
+
+            return
+
+        # ----------------------------------------------------------
+        # CALCUL DE LA QUANTITE
         # ----------------------------------------------------------
 
         quantity = (
             self.risk_manager
             .CalculateQuantity(
-
                 price,
-
                 atr
             )
         )
@@ -451,13 +433,11 @@ class QuantResearchStrategy(QCAlgorithm):
             return
 
         # ----------------------------------------------------------
-        # VERIFICATION PORTEFEUILLE
+        # CONTROLE ALLOCATION
         # ----------------------------------------------------------
 
         if not self.portfolio_manager.CanAddCapital(
-
             symbol,
-
             quantity
         ):
 
@@ -478,11 +458,8 @@ class QuantResearchStrategy(QCAlgorithm):
         # ----------------------------------------------------------
 
         ticket = self.MarketOrder(
-
             symbol,
-
             quantity,
-
             tag=tag
         )
 
@@ -495,20 +472,15 @@ class QuantResearchStrategy(QCAlgorithm):
         # ----------------------------------------------------------
 
         self.trade_manager.RegisterEntry(
-
             symbol,
-
             price,
-
             atr,
-
             score,
-
             tag
         )
 
         # ----------------------------------------------------------
-        # LOG
+        # DEBUG
         # ----------------------------------------------------------
 
         if self.config.DEBUG:
@@ -522,17 +494,14 @@ class QuantResearchStrategy(QCAlgorithm):
                 %
                 (
                     symbol.Value,
-
                     quantity,
-
                     price,
-
                     score
                 )
             )
 
     # ==============================================================
-    # FERMETURE
+    # FERMETURE D'UNE POSITION
     # ==============================================================
 
     def ClosePosition(
@@ -541,6 +510,10 @@ class QuantResearchStrategy(QCAlgorithm):
         reason
     ):
 
+        # ----------------------------------------------------------
+        # VERIFICATION
+        # ----------------------------------------------------------
+
         if not self.Portfolio[
             symbol
         ].Invested:
@@ -548,10 +521,10 @@ class QuantResearchStrategy(QCAlgorithm):
             return
 
         # ----------------------------------------------------------
-        # DONNEES POSITION
+        # INFORMATIONS
         # ----------------------------------------------------------
 
-        quantity = (
+        quantity = int(
             self.Portfolio[
                 symbol
             ].Quantity
@@ -570,17 +543,7 @@ class QuantResearchStrategy(QCAlgorithm):
         )
 
         # ----------------------------------------------------------
-        # PNL
-        # ----------------------------------------------------------
-
-        pnl = (
-            current_price
-            -
-            entry_price
-        ) * quantity
-
-        # ----------------------------------------------------------
-        # INFORMATIONS TRADE
+        # INFORMATIONS DU TRADE
         # ----------------------------------------------------------
 
         trade = (
@@ -590,22 +553,16 @@ class QuantResearchStrategy(QCAlgorithm):
             )
         )
 
-        entry_time = (
-            trade.entry_time
-        )
+        entry_time = trade.entry_time
 
-        entry_score = (
-            trade.entry_score
-        )
+        entry_score = trade.entry_score
 
         # ----------------------------------------------------------
         # LIQUIDATION
         # ----------------------------------------------------------
 
         self.Liquidate(
-
             symbol,
-
             tag="EXIT_" + reason
         )
 
@@ -613,27 +570,33 @@ class QuantResearchStrategy(QCAlgorithm):
         # STATISTIQUES
         # ----------------------------------------------------------
 
-        self.statistics.RecordTrade(
+        if (
+            entry_price > 0
+            and
+            current_price > 0
+        ):
 
-            symbol,
+            self.statistics.RecordTrade(
 
-            entry_price,
+                symbol,
 
-            current_price,
+                entry_price,
 
-            quantity,
+                current_price,
 
-            entry_time,
+                quantity,
 
-            self.Time,
+                entry_time,
 
-            entry_score,
+                self.Time,
 
-            reason
-        )
+                entry_score,
+
+                reason
+            )
 
         # ----------------------------------------------------------
-        # RESET
+        # RESET DU TRADE
         # ----------------------------------------------------------
 
         self.trade_manager.CloseTrade(
@@ -641,10 +604,16 @@ class QuantResearchStrategy(QCAlgorithm):
         )
 
         # ----------------------------------------------------------
-        # LOG
+        # DEBUG
         # ----------------------------------------------------------
 
         if self.config.DEBUG:
+
+            pnl = (
+                current_price
+                -
+                entry_price
+            ) * quantity
 
             self.Debug(
 
@@ -654,9 +623,7 @@ class QuantResearchStrategy(QCAlgorithm):
                 %
                 (
                     symbol.Value,
-
                     reason,
-
                     pnl
                 )
             )
@@ -677,14 +644,12 @@ class QuantResearchStrategy(QCAlgorithm):
             ].Invested:
 
                 self.ClosePosition(
-
                     symbol,
-
                     reason
                 )
 
     # ==============================================================
-    # RAPPORT
+    # RAPPORT QUOTIDIEN
     # ==============================================================
 
     def DailyReport(self):
@@ -696,6 +661,26 @@ class QuantResearchStrategy(QCAlgorithm):
         if not self.config.DEBUG:
 
             return
+
+        # ----------------------------------------------------------
+        # REGIME
+        # ----------------------------------------------------------
+
+        regime = (
+            self.market_regime
+            .GetRegime()
+        )
+
+        self.Debug(
+
+            "MARKET REGIME | %s"
+            %
+            regime
+        )
+
+        # ----------------------------------------------------------
+        # PORTEFEUILLE
+        # ----------------------------------------------------------
 
         self.portfolio_manager.PrintPortfolioReport()
 
@@ -709,7 +694,7 @@ class QuantResearchStrategy(QCAlgorithm):
 
         self.Debug(
 
-            "FINAL VALUE = %.2f"
+            "FINAL PORTFOLIO VALUE = %.2f"
             %
             self.Portfolio
             .TotalPortfolioValue
