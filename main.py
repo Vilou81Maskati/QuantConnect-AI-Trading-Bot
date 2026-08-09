@@ -107,7 +107,7 @@ class QuantResearchStrategy(QCAlgorithm):
 
         self.SetWarmUp(
             self.config.WARMUP_DAYS,
-            Resolution.Daily
+            Resolution.Hour
         )
 
         # ==========================================================
