@@ -1,24 +1,4 @@
-"""
-Moteur de génération des signaux.
-
-Le moteur reçoit les caractéristiques calculées par indicators.py
-et produit des signaux de recherche :
-
-    BUY  = conditions favorables à une entrée
-    HOLD = aucune action
-    EXIT = conditions défavorables à une position existante
-
-Les paramètres sont volontairement centralisés dans Config.
-"""
-
-from enum import Enum
-
-
-class Signal(Enum):
-
-    BUY = "BUY"
-    HOLD = "HOLD"
-    EXIT = "EXIT"
+from AlgorithmImports import *
 
 
 class SignalEngine:
@@ -28,147 +8,164 @@ class SignalEngine:
         self.config = config
 
     # ==============================================================
-    # SCORE D'ENTREE
+    # CALCUL DU SCORE
     # ==============================================================
 
-    def CalculateEntryScore(self, features):
+    def CalculateScore(self, features):
 
         if features is None:
+            return 0
 
+        price = float(features["price"])
+        ema_fast = float(features["ema_fast"])
+        ema_slow = float(features["ema_slow"])
+        rsi = float(features["rsi"])
+        atr = float(features["atr"])
+        adx = float(features["adx"])
+        macd = float(features["macd"])
+        macd_signal = float(features["macd_signal"])
+        roc = float(features["roc"])
+        relative_volume = float(
+            features["relative_volume"]
+        )
+
+        if price <= 0 or atr <= 0:
             return 0
 
         score = 0
 
-        # ----------------------------------------------------------
-        # 1. TENDANCE PRINCIPALE
-        # ----------------------------------------------------------
+        # ==========================================================
+        # 1. TENDANCE EMA
+        # ==========================================================
 
-        if (
-            features["ema_fast"]
-            >
-            features["ema_slow"]
-        ):
+        if ema_fast > ema_slow:
 
             score += 25
 
-        else:
-
-            return 0
-
-        # ----------------------------------------------------------
-        # 2. POSITION DU PRIX
-        # ----------------------------------------------------------
-
-        if (
-            features["price"]
-            >
-            features["ema_fast"]
-        ):
-
-            score += 15
-
-        # ----------------------------------------------------------
-        # 3. RSI
-        # ----------------------------------------------------------
-
-        if (
-            self.config.RSI_MIN
-            <=
-            features["rsi"]
-            <=
-            self.config.RSI_MAX
-        ):
-
-            score += 20
-
-        elif (
-            features["rsi"]
-            >=
-            50
-        ):
+        elif ema_fast > ema_slow * 0.995:
 
             score += 10
 
-        # ----------------------------------------------------------
-        # 4. MACD
-        # ----------------------------------------------------------
+        # ==========================================================
+        # 2. POSITION DU PRIX
+        # ==========================================================
+
+        if price > ema_fast:
+
+            score += 15
+
+        elif price > ema_slow:
+
+            score += 7
+
+        # ==========================================================
+        # 3. RSI
+        # ==========================================================
 
         if (
-            features["macd"]
-            >
-            features["macd_signal"]
+            rsi >= self.config.RSI_MIN
+            and
+            rsi <= self.config.RSI_MAX
         ):
 
             score += 15
 
-        # ----------------------------------------------------------
-        # 5. ADX
-        # ----------------------------------------------------------
+        elif rsi > self.config.RSI_MIN - 5:
 
-        if (
-            features["adx"]
-            >=
-            self.config.ADX_MIN
-        ):
+            score += 7
+
+        # ==========================================================
+        # 4. ADX
+        # ==========================================================
+
+        if adx >= self.config.ADX_MIN:
 
             score += 15
 
-        # ----------------------------------------------------------
-        # 6. VOLUME
-        # ----------------------------------------------------------
+        elif adx >= self.config.ADX_MIN - 5:
+
+            score += 7
+
+        # ==========================================================
+        # 5. MACD
+        # ==========================================================
+
+        if macd > macd_signal:
+
+            score += 15
+
+        # ==========================================================
+        # 6. MOMENTUM
+        # ==========================================================
+
+        if roc > 0:
+
+            score += 10
+
+        # ==========================================================
+        # 7. VOLUME
+        # ==========================================================
 
         if (
-            features["relative_volume"]
+            relative_volume
             >=
             self.config.MIN_RELATIVE_VOLUME
         ):
 
             score += 5
 
-        # ----------------------------------------------------------
-        # 7. ROC
-        # ----------------------------------------------------------
+        # ==========================================================
+        # LIMITATION
+        # ==========================================================
 
-        if (
-            features["roc"]
-            >
-            0
-        ):
-
-            score += 5
-
-        return score
+        return min(
+            100,
+            max(
+                0,
+                int(score)
+            )
+        )
 
     # ==============================================================
-    # VERIFICATION D'ENTREE
+    # SIGNAL D'ACHAT
     # ==============================================================
 
-    def CanEnter(self, features):
+    def IsLongSignal(self, features):
 
         if features is None:
-
             return False
 
-        # Prix minimum
+        score = self.CalculateScore(
+            features
+        )
+
+        if score < self.config.MIN_ENTRY_SCORE:
+            return False
+
+        # ----------------------------------------------------------
+        # FILTRE TENDANCE
+        # ----------------------------------------------------------
+
         if (
-            features["price"]
-            <
-            self.config.MINIMUM_PRICE
-        ):
-
-            return False
-
-        # Tendance haussière obligatoire
-        if not (
             features["ema_fast"]
-            >
+            <=
             features["ema_slow"]
         ):
 
             return False
 
-        # RSI trop élevé = éviter une entrée potentiellement
-        # trop éloignée de sa zone normale de momentum
+        # ----------------------------------------------------------
+        # FILTRE RSI
+        # ----------------------------------------------------------
+
+        if (
+            features["rsi"]
+            <
+            self.config.RSI_MIN
+        ):
+
+            return False
+
         if (
             features["rsi"]
             >
@@ -177,15 +174,26 @@ class SignalEngine:
 
             return False
 
-        # Score global
-        score = self.CalculateEntryScore(
-            features
-        )
+        # ----------------------------------------------------------
+        # FILTRE ADX
+        # ----------------------------------------------------------
 
         if (
-            score
+            features["adx"]
             <
-            self.config.MIN_ENTRY_SCORE
+            self.config.ADX_MIN
+        ):
+
+            return False
+
+        # ----------------------------------------------------------
+        # FILTRE MACD
+        # ----------------------------------------------------------
+
+        if (
+            features["macd"]
+            <=
+            features["macd_signal"]
         ):
 
             return False
@@ -193,57 +201,40 @@ class SignalEngine:
         return True
 
     # ==============================================================
-    # SIGNAL D'ENTREE
+    # SIGNAL DE SORTIE
     # ==============================================================
 
-    def GetEntrySignal(self, features):
-
-        if self.CanEnter(features):
-
-            return Signal.BUY
-
-        return Signal.HOLD
-
-    # ==============================================================
-    # DETECTION DE SORTIE
-    # ==============================================================
-
-    def GetExitSignal(
-        self,
-        features,
-        entry_price
-    ):
+    def IsExitSignal(self, features):
 
         if features is None:
-
-            return Signal.HOLD
-
-        # ----------------------------------------------------------
-        # TENDANCE
-        # ----------------------------------------------------------
-
-        if (
-            features["ema_fast"]
-            <
-            features["ema_slow"]
-        ):
-
-            return Signal.EXIT
+            return False
 
         # ----------------------------------------------------------
-        # RSI
+        # RSI TRES FAIBLE
         # ----------------------------------------------------------
 
         if (
             features["rsi"]
-            <
+            <=
             self.config.RSI_EXIT
         ):
 
-            return Signal.EXIT
+            return True
 
         # ----------------------------------------------------------
-        # MACD
+        # PERTE DE TENDANCE
+        # ----------------------------------------------------------
+
+        if (
+            features["price"]
+            <
+            features["ema_slow"]
+        ):
+
+            return True
+
+        # ----------------------------------------------------------
+        # MACD NEGATIF
         # ----------------------------------------------------------
 
         if (
@@ -252,205 +243,116 @@ class SignalEngine:
             features["macd_signal"]
         ):
 
-            return Signal.EXIT
+            return True
 
-        # ----------------------------------------------------------
-        # PROTECTION EXTREME
-        # ----------------------------------------------------------
-
-        if entry_price > 0:
-
-            loss_ratio = (
-                features["price"]
-                /
-                entry_price
-            )
-
-            if loss_ratio <= 0.50:
-
-                return Signal.EXIT
-
-        return Signal.HOLD
+        return False
 
     # ==============================================================
-    # ANALYSE COMPLETE
+    # SIGNAL COMPLET
     # ==============================================================
 
-    def Analyze(
-        self,
-        features,
-        invested=False,
-        entry_price=0
-    ):
+    def GetSignal(self, features):
 
         if features is None:
 
             return {
-                "signal": Signal.HOLD,
-                "score": 0,
-                "reasons": []
+                "signal": "NONE",
+                "score": 0
             }
 
-        score = self.CalculateEntryScore(
+        score = self.CalculateScore(
             features
         )
 
-        reasons = []
-
         # ----------------------------------------------------------
-        # POSITION EXISTANTE
+        # ACHAT
         # ----------------------------------------------------------
 
-        if invested:
-
-            signal = self.GetExitSignal(
-                features,
-                entry_price
-            )
-
-            if signal == Signal.EXIT:
-
-                if (
-                    features["ema_fast"]
-                    <
-                    features["ema_slow"]
-                ):
-
-                    reasons.append(
-                        "TREND_REVERSAL"
-                    )
-
-                if (
-                    features["rsi"]
-                    <
-                    self.config.RSI_EXIT
-                ):
-
-                    reasons.append(
-                        "RSI_WEAKNESS"
-                    )
-
-                if (
-                    features["macd"]
-                    <
-                    features["macd_signal"]
-                ):
-
-                    reasons.append(
-                        "MACD_WEAKNESS"
-                    )
-
-                return {
-                    "signal": Signal.EXIT,
-                    "score": score,
-                    "reasons": reasons
-                }
+        if self.IsLongSignal(features):
 
             return {
-                "signal": Signal.HOLD,
-                "score": score,
-                "reasons": []
+                "signal": "LONG",
+                "score": score
             }
 
         # ----------------------------------------------------------
-        # AUCUNE POSITION
+        # SORTIE
         # ----------------------------------------------------------
 
-        signal = self.GetEntrySignal(
-            features
-        )
+        if self.IsExitSignal(features):
 
-        if signal == Signal.BUY:
+            return {
+                "signal": "EXIT",
+                "score": score
+            }
 
-            if (
-                features["ema_fast"]
-                >
-                features["ema_slow"]
-            ):
-
-                reasons.append(
-                    "UPTREND"
-                )
-
-            if (
-                features["macd"]
-                >
-                features["macd_signal"]
-            ):
-
-                reasons.append(
-                    "POSITIVE_MACD"
-                )
-
-            if (
-                features["rsi"]
-                >=
-                self.config.RSI_MIN
-            ):
-
-                reasons.append(
-                    "POSITIVE_MOMENTUM"
-                )
-
-            if (
-                features["adx"]
-                >=
-                self.config.ADX_MIN
-            ):
-
-                reasons.append(
-                    "TREND_STRENGTH"
-                )
+        # ----------------------------------------------------------
+        # ATTENTE
+        # ----------------------------------------------------------
 
         return {
-            "signal": signal,
-            "score": score,
-            "reasons": reasons
+            "signal": "HOLD",
+            "score": score
         }
 
     # ==============================================================
-    # CLASSEMENT DES OPPORTUNITES
+    # VERIFICATION RAPIDE D'ACHAT
     # ==============================================================
 
-    def RankCandidates(
-        self,
-        candidates
-    ):
+    def ShouldEnter(self, features):
 
-        """
-        candidates doit contenir des dictionnaires
-        ayant au minimum :
+        return self.IsLongSignal(
+            features
+        )
 
-            {
-                "symbol": symbol,
-                "score": score,
-                "features": features
+    # ==============================================================
+    # VERIFICATION RAPIDE DE SORTIE
+    # ==============================================================
+
+    def ShouldExit(self, features):
+
+        return self.IsExitSignal(
+            features
+        )
+
+    # ==============================================================
+    # INFORMATIONS DU SIGNAL
+    # ==============================================================
+
+    def GetSignalDetails(self, features):
+
+        if features is None:
+
+            return {
+                "signal": "NONE",
+                "score": 0,
+                "trend": False,
+                "momentum": False,
+                "volume": False
             }
 
-        Les meilleurs scores sont placés en premier.
-        """
+        return {
 
-        return sorted(
-            candidates,
-            key=lambda x: x["score"],
-            reverse=True
-        )
+            "signal":
+                self.GetSignal(
+                    features
+                )["signal"],
 
-    # ==============================================================
-    # MEILLEURE OPPORTUNITE
-    # ==============================================================
+            "score":
+                self.CalculateScore(
+                    features
+                ),
 
-    def BestCandidate(
-        self,
-        candidates
-    ):
+            "trend":
+                features["ema_fast"]
+                >
+                features["ema_slow"],
 
-        if not candidates:
+            "momentum":
+                features["roc"] > 0,
 
-            return None
-
-        ranked = self.RankCandidates(
-            candidates
-        )
-
-        return ranked[0]
+            "volume":
+                features["relative_volume"]
+                >=
+                self.config.MIN_RELATIVE_VOLUME
+        }
