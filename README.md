@@ -1,1 +1,0 @@
-# QuantConnect-AI-Trading-Bot
