@@ -9,10 +9,10 @@ class RealisticCostModel:
         self.config = config
 
     # ==============================================================
-    # ESTIMATION DU COUT D'UNE TRANSACTION
+    # COMMISSION
     # ==============================================================
 
-    def EstimateCost(
+    def EstimateCommission(
         self,
         price,
         quantity
@@ -26,33 +26,63 @@ class RealisticCostModel:
 
         notional = (
             abs(quantity)
-            *
-            price
+            * price
         )
 
-        # ----------------------------------------------------------
-        # COMMISSION
-        # ----------------------------------------------------------
+        return (
+            notional
+            * self.config.COMMISSION_RATE
+        )
+
+    # ==============================================================
+    # SLIPPAGE
+    # ==============================================================
+
+    def EstimateSlippage(
+        self,
+        price,
+        quantity
+    ):
+
+        if price <= 0:
+            return 0.0
+
+        if quantity == 0:
+            return 0.0
+
+        notional = (
+            abs(quantity)
+            * price
+        )
+
+        return (
+            notional
+            * self.config.SLIPPAGE_RATE
+        )
+
+    # ==============================================================
+    # COUT TOTAL
+    # ==============================================================
+
+    def EstimateCost(
+        self,
+        price,
+        quantity
+    ):
 
         commission = (
-            notional
-            *
-            self.config.COMMISSION_RATE
+            self.EstimateCommission(
+                price,
+                quantity
+            )
         )
-
-        # ----------------------------------------------------------
-        # SLIPPAGE
-        # ----------------------------------------------------------
 
         slippage = (
-            notional
-            *
-            self.config.SLIPPAGE_RATE
+            self.EstimateSlippage(
+                price,
+                quantity
+            )
         )
-
-        # ----------------------------------------------------------
-        # COUT TOTAL
-        # ----------------------------------------------------------
 
         return (
             commission
@@ -86,7 +116,7 @@ class RealisticCostModel:
                 price
                 *
                 (
-                    1
+                    1.0
                     +
                     self.config.SLIPPAGE_RATE
                 )
@@ -100,8 +130,51 @@ class RealisticCostModel:
             price
             *
             (
-                1
+                1.0
                 -
                 self.config.SLIPPAGE_RATE
             )
         )
+
+    # ==============================================================
+    # RAPPORT
+    # ==============================================================
+
+    def GetCostReport(
+        self,
+        price,
+        quantity
+    ):
+
+        commission = (
+            self.EstimateCommission(
+                price,
+                quantity
+            )
+        )
+
+        slippage = (
+            self.EstimateSlippage(
+                price,
+                quantity
+            )
+        )
+
+        total = (
+            commission
+            +
+            slippage
+        )
+
+        return {
+
+            "commission":
+                commission,
+
+            "slippage":
+                slippage,
+
+            "total":
+                total
+
+        }
