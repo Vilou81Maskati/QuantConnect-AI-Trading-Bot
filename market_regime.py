@@ -3,46 +3,105 @@ from AlgorithmImports import *
 
 class MarketRegime:
 
-    BULL = "BULL"
-    NEUTRAL = "NEUTRAL"
-    BEAR = "BEAR"
-
-    def __init__(self, algorithm, config):
+    def __init__(
+        self,
+        algorithm,
+        config
+    ):
 
         self.algorithm = algorithm
         self.config = config
 
         # ==========================================================
-        # INDICATEURS DU MARCHE DE REFERENCE
+        # ACTIF DE REFERENCE
         # ==========================================================
 
-        self.spy = algorithm.AddEquity(
-            "SPY",
-            Resolution.Hour
-        ).Symbol
+        self.symbol = None
 
-        self.ema_fast = algorithm.EMA(
-            self.spy,
-            config.REGIME_FAST_EMA,
+        # ==========================================================
+        # INDICATEURS
+        # ==========================================================
+
+        self.fast_ema = None
+        self.slow_ema = None
+        self.rsi = None
+        self.adx = None
+
+        # ==========================================================
+        # INITIALISATION
+        # ==========================================================
+
+        self.InitializeIndicators()
+
+    # ==============================================================
+    # INITIALISATION
+    # ==============================================================
+
+    def InitializeIndicators(self):
+
+        if not self.config.SYMBOLS:
+
+            return
+
+        # ----------------------------------------------------------
+        # UTILISATION DE SPY COMME REFERENCE
+        # ----------------------------------------------------------
+
+        ticker = "SPY"
+
+        if ticker not in self.config.SYMBOLS:
+
+            ticker = self.config.SYMBOLS[0]
+
+        security = self.algorithm.AddEquity(
+            ticker,
             Resolution.Hour
         )
 
-        self.ema_slow = algorithm.EMA(
-            self.spy,
-            config.REGIME_SLOW_EMA,
+        security.SetDataNormalizationMode(
+            DataNormalizationMode.Adjusted
+        )
+
+        self.symbol = security.Symbol
+
+        # ----------------------------------------------------------
+        # EMA RAPIDE
+        # ----------------------------------------------------------
+
+        self.fast_ema = self.algorithm.EMA(
+            self.symbol,
+            self.config.REGIME_FAST_EMA,
             Resolution.Hour
         )
 
-        self.rsi = algorithm.RSI(
-            self.spy,
-            config.REGIME_RSI_PERIOD,
+        # ----------------------------------------------------------
+        # EMA LENTE
+        # ----------------------------------------------------------
+
+        self.slow_ema = self.algorithm.EMA(
+            self.symbol,
+            self.config.REGIME_SLOW_EMA,
+            Resolution.Hour
+        )
+
+        # ----------------------------------------------------------
+        # RSI
+        # ----------------------------------------------------------
+
+        self.rsi = self.algorithm.RSI(
+            self.symbol,
+            self.config.REGIME_RSI_PERIOD,
             MovingAverageType.Wilders,
             Resolution.Hour
         )
 
-        self.adx = algorithm.ADX(
-            self.spy,
-            config.REGIME_ADX_PERIOD,
+        # ----------------------------------------------------------
+        # ADX
+        # ----------------------------------------------------------
+
+        self.adx = self.algorithm.ADX(
+            self.symbol,
+            self.config.REGIME_ADX_PERIOD,
             Resolution.Hour
         )
 
@@ -52,37 +111,48 @@ class MarketRegime:
 
     def IsReady(self):
 
+        if self.fast_ema is None:
+            return False
+
+        if self.slow_ema is None:
+            return False
+
+        if self.rsi is None:
+            return False
+
+        if self.adx is None:
+            return False
+
         return (
-
-            self.ema_fast.IsReady
+            self.fast_ema.IsReady
             and
-
-            self.ema_slow.IsReady
+            self.slow_ema.IsReady
             and
-
             self.rsi.IsReady
             and
-
             self.adx.IsReady
-
         )
 
     # ==============================================================
-    # REGIME
+    # REGIME ACTUEL
     # ==============================================================
 
     def GetRegime(self):
 
         if not self.IsReady():
 
-            return self.NEUTRAL
+            return "UNKNOWN"
+
+        # ----------------------------------------------------------
+        # VALEURS
+        # ----------------------------------------------------------
 
         fast = float(
-            self.ema_fast.Current.Value
+            self.fast_ema.Current.Value
         )
 
         slow = float(
-            self.ema_slow.Current.Value
+            self.slow_ema.Current.Value
         )
 
         rsi = float(
@@ -93,47 +163,39 @@ class MarketRegime:
             self.adx.Current.Value
         )
 
-        # ==========================================================
-        # MARCHE HAUSSIER
-        # ==========================================================
+        # ----------------------------------------------------------
+        # REGIME HAUSSIER
+        # ----------------------------------------------------------
 
         if (
-
             fast > slow
-
             and
-
             rsi >= self.config.REGIME_BULL_RSI
-
             and
-
             adx >= self.config.REGIME_MIN_ADX
-
         ):
 
-            return self.BULL
+            return "BULL"
 
-        # ==========================================================
-        # MARCHE BAISSIER
-        # ==========================================================
+        # ----------------------------------------------------------
+        # REGIME BAISSIER
+        # ----------------------------------------------------------
 
         if (
-
             fast < slow
-
             and
-
-            rsi <= self.config.REGIME_BEAR_RSI
-
+            rsi < self.config.REGIME_BEAR_RSI
+            and
+            adx >= self.config.REGIME_MIN_ADX
         ):
 
-            return self.BEAR
+            return "BEAR"
 
-        # ==========================================================
-        # MARCHE NEUTRE
-        # ==========================================================
+        # ----------------------------------------------------------
+        # REGIME NEUTRE
+        # ----------------------------------------------------------
 
-        return self.NEUTRAL
+        return "NEUTRAL"
 
     # ==============================================================
     # AUTORISATION DES ACHATS
@@ -144,26 +206,65 @@ class MarketRegime:
         regime = self.GetRegime()
 
         # ----------------------------------------------------------
-        # MODE HAUSSIER
+        # MARCHE HAUSSIER
         # ----------------------------------------------------------
 
-        if regime == self.BULL:
+        if regime == "BULL":
 
             return True
 
         # ----------------------------------------------------------
-        # MODE NEUTRE
+        # MARCHE NEUTRE
         # ----------------------------------------------------------
 
-        if regime == self.NEUTRAL:
+        if regime == "NEUTRAL":
 
-            return self.config.ALLOW_NEUTRAL_ENTRIES
+            return (
+                self.config
+                .ALLOW_NEUTRAL_ENTRIES
+            )
 
         # ----------------------------------------------------------
-        # MODE BAISSIER
+        # MARCHE BAISSIER
         # ----------------------------------------------------------
 
         return False
+
+    # ==============================================================
+    # MARCHE BAISSIER
+    # ==============================================================
+
+    def IsBearMarket(self):
+
+        return (
+            self.GetRegime()
+            ==
+            "BEAR"
+        )
+
+    # ==============================================================
+    # MARCHE HAUSSIER
+    # ==============================================================
+
+    def IsBullMarket(self):
+
+        return (
+            self.GetRegime()
+            ==
+            "BULL"
+        )
+
+    # ==============================================================
+    # MARCHE NEUTRE
+    # ==============================================================
+
+    def IsNeutralMarket(self):
+
+        return (
+            self.GetRegime()
+            ==
+            "NEUTRAL"
+        )
 
     # ==============================================================
     # RAPPORT
@@ -171,12 +272,50 @@ class MarketRegime:
 
     def GetReport(self):
 
+        if not self.IsReady():
+
+            return {
+
+                "regime":
+                    "UNKNOWN",
+
+                "fast_ema":
+                    None,
+
+                "slow_ema":
+                    None,
+
+                "rsi":
+                    None,
+
+                "adx":
+                    None
+
+            }
+
         return {
 
             "regime":
                 self.GetRegime(),
 
-            "allow_long":
-                self.AllowLongEntries()
+            "fast_ema":
+                float(
+                    self.fast_ema.Current.Value
+                ),
+
+            "slow_ema":
+                float(
+                    self.slow_ema.Current.Value
+                ),
+
+            "rsi":
+                float(
+                    self.rsi.Current.Value
+                ),
+
+            "adx":
+                float(
+                    self.adx.Current.Value
+                )
 
         }
