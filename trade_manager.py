@@ -1,115 +1,48 @@
-"""
-Gestionnaire des positions.
-
-Responsabilités :
-- mémoriser les caractéristiques d'une position ;
-- calculer et mettre à jour le stop ;
-- gérer l'objectif ;
-- gérer le trailing stop ;
-- déterminer une raison de sortie ;
-- nettoyer l'état après fermeture.
-
-Important :
-Le TradeManager ne passe pas directement les ordres.
-La décision d'exécuter un ordre reste dans main.py.
-"""
-
 from AlgorithmImports import *
 
 
 class TradeState:
 
-    def __init__(self, symbol):
+    def __init__(
+        self,
+        symbol,
+        entry_price,
+        entry_atr,
+        entry_score,
+        entry_time,
+        tag
+    ):
 
         self.symbol = symbol
 
-        # ----------------------------------------------------------
-        # ETAT DE LA POSITION
-        # ----------------------------------------------------------
+        self.entry_price = float(
+            entry_price
+        )
 
-        self.active = False
+        self.entry_atr = float(
+            entry_atr
+        )
 
-        # ----------------------------------------------------------
-        # PRIX
-        # ----------------------------------------------------------
+        self.entry_score = int(
+            entry_score
+        )
 
-        self.entry_price = 0.0
+        self.entry_time = entry_time
 
-        self.current_price = 0.0
-
-        self.highest_price = 0.0
-
-        # ----------------------------------------------------------
-        # RISQUE
-        # ----------------------------------------------------------
-
-        self.initial_stop = 0.0
-
-        self.stop_price = 0.0
-
-        self.target_price = 0.0
-
-        # ----------------------------------------------------------
-        # ATR
-        # ----------------------------------------------------------
-
-        self.entry_atr = 0.0
-
-        self.current_atr = 0.0
-
-        # ----------------------------------------------------------
-        # TEMPS
-        # ----------------------------------------------------------
-
-        self.entry_time = None
-
-        self.last_update = None
-
-        # ----------------------------------------------------------
-        # INFORMATIONS
-        # ----------------------------------------------------------
-
-        self.entry_score = 0
-
-        self.entry_tag = ""
-
-    # ==============================================================
-    # INITIALISATION DU TRADE
-    # ==============================================================
-
-    def Open(
-        self,
-        price,
-        atr,
-        target_multiplier,
-        stop_multiplier,
-        score,
-        tag,
-        current_time
-    ):
-
-        self.active = True
-
-        self.entry_price = price
-
-        self.current_price = price
-
-        self.highest_price = price
-
-        self.entry_atr = atr
-
-        self.current_atr = atr
+        self.tag = tag
 
         # ----------------------------------------------------------
         # STOP INITIAL
         # ----------------------------------------------------------
 
         self.initial_stop = (
-            price
+            self.entry_price
             -
-            atr
-            *
-            stop_multiplier
+            (
+                self.entry_atr
+                *
+                2.0
+            )
         )
 
         self.stop_price = (
@@ -117,234 +50,34 @@ class TradeState:
         )
 
         # ----------------------------------------------------------
-        # OBJECTIF
+        # OBJECTIF INITIAL
         # ----------------------------------------------------------
 
         self.target_price = (
-            price
+            self.entry_price
             +
-            atr
-            *
-            target_multiplier
-        )
-
-        # ----------------------------------------------------------
-        # INFORMATIONS
-        # ----------------------------------------------------------
-
-        self.entry_time = current_time
-
-        self.last_update = current_time
-
-        self.entry_score = score
-
-        self.entry_tag = tag
-
-    # ==============================================================
-    # MISE A JOUR
-    # ==============================================================
-
-    def Update(
-        self,
-        price,
-        atr,
-        current_time
-    ):
-
-        if not self.active:
-
-            return
-
-        self.current_price = price
-
-        self.current_atr = atr
-
-        self.last_update = current_time
-
-        # ----------------------------------------------------------
-        # NOUVEAU PLUS HAUT
-        # ----------------------------------------------------------
-
-        if price > self.highest_price:
-
-            self.highest_price = price
-
-    # ==============================================================
-    # TRAILING STOP
-    # ==============================================================
-
-    def UpdateTrailingStop(
-        self,
-        atr,
-        multiplier
-    ):
-
-        if not self.active:
-
-            return
-
-        if atr <= 0:
-
-            return
-
-        # ----------------------------------------------------------
-        # NOUVEAU STOP THEORIQUE
-        # ----------------------------------------------------------
-
-        trailing_stop = (
-            self.highest_price
-            -
-            atr
-            *
-            multiplier
-        )
-
-        # ----------------------------------------------------------
-        # LE STOP NE DOIT JAMAIS REDESCENDRE
-        # ----------------------------------------------------------
-
-        if (
-            trailing_stop
-            >
-            self.stop_price
-        ):
-
-            self.stop_price = (
-                trailing_stop
+            (
+                self.entry_atr
+                *
+                4.0
             )
-
-    # ==============================================================
-    # VERIFICATION DU STOP
-    # ==============================================================
-
-    def StopHit(self):
-
-        if not self.active:
-
-            return False
-
-        if self.current_price <= self.stop_price:
-
-            return True
-
-        return False
-
-    # ==============================================================
-    # VERIFICATION DE L'OBJECTIF
-    # ==============================================================
-
-    def TargetHit(self):
-
-        if not self.active:
-
-            return False
-
-        if self.current_price >= self.target_price:
-
-            return True
-
-        return False
-
-    # ==============================================================
-    # RENDEMENT
-    # ==============================================================
-
-    def ReturnPercent(self):
-
-        if self.entry_price <= 0:
-
-            return 0.0
-
-        return (
-            self.current_price
-            -
-            self.entry_price
-        ) / self.entry_price
-
-    # ==============================================================
-    # DISTANCE DU STOP
-    # ==============================================================
-
-    def StopDistancePercent(self):
-
-        if self.entry_price <= 0:
-
-            return 0.0
-
-        return (
-            self.entry_price
-            -
-            self.stop_price
-        ) / self.entry_price
-
-    # ==============================================================
-    # VERIFICATION DE SORTIE
-    # ==============================================================
-
-    def CheckExit(
-        self,
-        features,
-        signal_engine
-    ):
-
-        if not self.active:
-
-            return None
-
-        # ----------------------------------------------------------
-        # STOP
-        # ----------------------------------------------------------
-
-        if self.StopHit():
-
-            return "STOP_LOSS"
-
-        # ----------------------------------------------------------
-        # OBJECTIF
-        # ----------------------------------------------------------
-
-        if self.TargetHit():
-
-            return "TARGET"
-
-        # ----------------------------------------------------------
-        # SIGNAL STRATEGIQUE
-        # ----------------------------------------------------------
-
-        if features is not None:
-
-            signal = (
-                signal_engine.GetExitSignal(
-                    features,
-                    self.entry_price
-                )
-            )
-
-            if signal.value == "EXIT":
-
-                return "STRATEGY_EXIT"
-
-        return None
-
-    # ==============================================================
-    # FERMETURE
-    # ==============================================================
-
-    def Close(self):
-
-        self.active = False
-
-    # ==============================================================
-    # RESET COMPLET
-    # ==============================================================
-
-    def Reset(self):
-
-        symbol = self.symbol
-
-        self.__init__(
-            symbol
         )
+
+        # ----------------------------------------------------------
+        # PLUS HAUT PRIX
+        # ----------------------------------------------------------
+
+        self.highest_price = (
+            self.entry_price
+        )
+
+        # ----------------------------------------------------------
+        # TRAILING
+        # ----------------------------------------------------------
+
+        self.trailing_stop = None
+
+        self.is_active = True
 
 
 class TradeManager:
@@ -362,7 +95,65 @@ class TradeManager:
         self.trades = {}
 
     # ==============================================================
-    # RECUPERER OU CREER UN TRADE
+    # ENREGISTREMENT D'UNE ENTREE
+    # ==============================================================
+
+    def RegisterEntry(
+        self,
+        symbol,
+        entry_price,
+        atr,
+        score,
+        tag
+    ):
+
+        trade = TradeState(
+
+            symbol,
+
+            entry_price,
+
+            atr,
+
+            score,
+
+            self.algorithm.Time,
+
+            tag
+        )
+
+        # ----------------------------------------------------------
+        # PARAMETRES CONFIGURATION
+        # ----------------------------------------------------------
+
+        trade.initial_stop = (
+            entry_price
+            -
+            (
+                atr
+                *
+                self.config.STOP_ATR_MULTIPLIER
+            )
+        )
+
+        trade.stop_price = (
+            trade.initial_stop
+        )
+
+        trade.target_price = (
+            entry_price
+            +
+            (
+                atr
+                *
+                self.config.TARGET_ATR_MULTIPLIER
+            )
+        )
+
+        self.trades[symbol] = trade
+
+    # ==============================================================
+    # RECUPERATION D'UN TRADE
     # ==============================================================
 
     def GetTrade(
@@ -370,46 +161,9 @@ class TradeManager:
         symbol
     ):
 
-        if symbol not in self.trades:
-
-            self.trades[symbol] = (
-                TradeState(symbol)
-            )
-
-        return self.trades[symbol]
-
-    # ==============================================================
-    # OUVERTURE
-    # ==============================================================
-
-    def RegisterEntry(
-        self,
-        symbol,
-        price,
-        atr,
-        score,
-        tag
-    ):
-
-        trade = self.GetTrade(
-            symbol
-        )
-
-        trade.Open(
-
-            price,
-
-            atr,
-
-            self.config.TARGET_ATR_MULTIPLIER,
-
-            self.config.STOP_ATR_MULTIPLIER,
-
-            score,
-
-            tag,
-
-            self.algorithm.Time
+        return self.trades.get(
+            symbol,
+            None
         )
 
     # ==============================================================
@@ -427,25 +181,111 @@ class TradeManager:
             symbol
         )
 
-        if not trade.active:
+        if trade is None:
 
             return
 
-        trade.Update(
+        if not trade.is_active:
 
-            price,
+            return
 
-            atr,
+        if price <= 0:
 
-            self.algorithm.Time
-        )
+            return
 
-        trade.UpdateTrailingStop(
+        if atr <= 0:
 
-            atr,
+            return
 
+        # ----------------------------------------------------------
+        # NOUVEAU PLUS HAUT
+        # ----------------------------------------------------------
+
+        if price > trade.highest_price:
+
+            trade.highest_price = price
+
+        # ----------------------------------------------------------
+        # TRAILING STOP
+        # ----------------------------------------------------------
+
+        trailing_distance = (
+            atr
+            *
             self.config.TRAILING_ATR_MULTIPLIER
         )
+
+        proposed_trailing = (
+            trade.highest_price
+            -
+            trailing_distance
+        )
+
+        # ----------------------------------------------------------
+        # LE TRAILING NE PEUT PAS DESCENDRE
+        # ----------------------------------------------------------
+
+        if trade.trailing_stop is None:
+
+            trade.trailing_stop = (
+                proposed_trailing
+            )
+
+        else:
+
+            trade.trailing_stop = max(
+
+                trade.trailing_stop,
+
+                proposed_trailing
+
+            )
+
+        # ----------------------------------------------------------
+        # LE STOP FINAL EST LE PLUS ELEVE
+        # ----------------------------------------------------------
+
+        trade.stop_price = max(
+
+            trade.stop_price,
+
+            trade.trailing_stop
+
+        )
+
+        # ----------------------------------------------------------
+        # PASSAGE EN PROTECTION DU CAPITAL
+        # ----------------------------------------------------------
+
+        profit_distance = (
+            trade.entry_price
+            *
+            0.01
+        )
+
+        if (
+            price
+            >=
+            trade.entry_price
+            +
+            profit_distance
+        ):
+
+            # ------------------------------------------------------
+            # STOP AU-DESSUS DU PRIX D'ENTREE
+            # ------------------------------------------------------
+
+            break_even_stop = (
+                trade.entry_price
+            )
+
+            trade.stop_price = max(
+
+                trade.stop_price,
+
+                break_even_stop
+
+            )
 
     # ==============================================================
     # VERIFICATION DE SORTIE
@@ -462,87 +302,53 @@ class TradeManager:
             symbol
         )
 
-        return trade.CheckExit(
+        if trade is None:
 
-            features,
+            return None
 
-            signal_engine
+        if not trade.is_active:
+
+            return None
+
+        if features is None:
+
+            return None
+
+        price = float(
+            features["price"]
         )
 
-    # ==============================================================
-    # POSITION ACTIVE
-    # ==============================================================
+        if price <= 0:
 
-    def IsActive(
-        self,
-        symbol
-    ):
+            return None
 
-        trade = self.GetTrade(
-            symbol
-        )
+        # ----------------------------------------------------------
+        # STOP LOSS
+        # ----------------------------------------------------------
 
-        return trade.active
+        if price <= trade.stop_price:
 
-    # ==============================================================
-    # PRIX D'ENTREE
-    # ==============================================================
+            return "STOP_LOSS"
 
-    def EntryPrice(
-        self,
-        symbol
-    ):
+        # ----------------------------------------------------------
+        # TAKE PROFIT
+        # ----------------------------------------------------------
 
-        trade = self.GetTrade(
-            symbol
-        )
+        if price >= trade.target_price:
 
-        return trade.entry_price
+            return "TAKE_PROFIT"
 
-    # ==============================================================
-    # STOP
-    # ==============================================================
+        # ----------------------------------------------------------
+        # SIGNAL TECHNIQUE
+        # ----------------------------------------------------------
 
-    def StopPrice(
-        self,
-        symbol
-    ):
+        if signal_engine.IsExitSignal(
+            features
+        ):
 
-        trade = self.GetTrade(
-            symbol
-        )
+            return "SIGNAL_EXIT"
 
-        return trade.stop_price
-
-    # ==============================================================
-    # OBJECTIF
-    # ==============================================================
-
-    def TargetPrice(
-        self,
-        symbol
-    ):
-
-        trade = self.GetTrade(
-            symbol
-        )
-
-        return trade.target_price
-
-    # ==============================================================
-    # RENDEMENT
-    # ==============================================================
-
-    def ReturnPercent(
-        self,
-        symbol
-    ):
-
-        trade = self.GetTrade(
-            symbol
-        )
-
-        return trade.ReturnPercent()
+        return None
 
     # ==============================================================
     # FERMETURE
@@ -557,12 +363,39 @@ class TradeManager:
             symbol
         )
 
-        trade.Close()
+        if trade is None:
 
-        trade.Reset()
+            return
+
+        trade.is_active = False
+
+        del self.trades[
+            symbol
+        ]
 
     # ==============================================================
-    # RAPPORT D'UNE POSITION
+    # VERIFICATION EXISTENCE
+    # ==============================================================
+
+    def HasTrade(
+        self,
+        symbol
+    ):
+
+        return symbol in self.trades
+
+    # ==============================================================
+    # NOMBRE DE TRADES
+    # ==============================================================
+
+    def ActiveTradeCount(self):
+
+        return len(
+            self.trades
+        )
+
+    # ==============================================================
+    # INFORMATIONS DU TRADE
     # ==============================================================
 
     def GetTradeReport(
@@ -574,35 +407,37 @@ class TradeManager:
             symbol
         )
 
+        if trade is None:
+
+            return None
+
         return {
 
             "symbol":
                 symbol.Value,
 
-            "active":
-                trade.active,
-
             "entry_price":
                 trade.entry_price,
 
-            "current_price":
-                trade.current_price,
-
-            "stop":
+            "stop_price":
                 trade.stop_price,
 
-            "target":
+            "target_price":
                 trade.target_price,
 
-            "highest":
+            "highest_price":
                 trade.highest_price,
 
-            "return":
-                trade.ReturnPercent(),
+            "trailing_stop":
+                trade.trailing_stop,
 
-            "score":
+            "entry_score":
                 trade.entry_score,
 
             "entry_time":
-                trade.entry_time
+                trade.entry_time,
+
+            "active":
+                trade.is_active
+
         }
