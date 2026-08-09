@@ -1,16 +1,3 @@
-"""
-Gestion du risque du portefeuille.
-
-Le RiskManager détermine :
-- le capital risqué par transaction ;
-- la taille maximale d'une position ;
-- le nombre maximal de positions ;
-- les protections contre les pertes journalières ;
-- la protection contre un drawdown important.
-
-Les paramètres sont définis dans config.py.
-"""
-
 from AlgorithmImports import *
 
 
@@ -21,33 +8,52 @@ class RiskManager:
         self.algorithm = algorithm
         self.config = config
 
-        # Valeur du portefeuille au début de la journée
-        self.day_start_value = (
-            float(
-                algorithm.Portfolio.TotalPortfolioValue
-            )
+        # ==========================================================
+        # SUIVI DU CAPITAL
+        # ==========================================================
+
+        self.starting_value = (
+            algorithm.Portfolio.TotalPortfolioValue
         )
 
-        # Plus haut historique du portefeuille
         self.peak_value = (
-            float(
-                algorithm.Portfolio.TotalPortfolioValue
-            )
+            self.starting_value
         )
 
-        # Etat du verrouillage
-        self.locked = False
+        self.day_start_value = (
+            self.starting_value
+        )
+
+        self.trading_locked = False
+
+        self.current_date = None
 
     # ==============================================================
-    # MISE A JOUR DU PLUS HAUT DU PORTEFEUILLE
+    # RESET QUOTIDIEN
+    # ==============================================================
+
+    def ResetDailyRisk(self):
+
+        self.day_start_value = (
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
+        )
+
+        self.current_date = (
+            self.algorithm.Time.date()
+        )
+
+        self.trading_locked = False
+
+    # ==============================================================
+    # MISE A JOUR DU PLUS HAUT CAPITAL
     # ==============================================================
 
     def UpdatePeak(self):
 
         current_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
         if current_value > self.peak_value:
@@ -55,92 +61,84 @@ class RiskManager:
             self.peak_value = current_value
 
     # ==============================================================
-    # NOUVELLE JOURNEE
+    # DRAWdown ACTUEL
     # ==============================================================
 
-    def ResetDailyRisk(self):
-
-        self.day_start_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
-        )
-
-        self.locked = False
-
-    # ==============================================================
-    # PERTE JOURNALIERE
-    # ==============================================================
-
-    def DailyLossPercent(self):
-
-        if self.day_start_value <= 0:
-
-            return 0.0
-
-        current_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
-        )
-
-        loss = (
-            self.day_start_value
-            -
-            current_value
-        )
-
-        return max(
-            0.0,
-            loss /
-            self.day_start_value
-        )
-
-    # ==============================================================
-    # DRAWDOWN
-    # ==============================================================
-
-    def DrawdownPercent(self):
+    def CurrentDrawdown(self):
 
         if self.peak_value <= 0:
 
             return 0.0
 
         current_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
         drawdown = (
             self.peak_value
             -
             current_value
-        )
+        ) / self.peak_value
 
         return max(
             0.0,
-            drawdown /
-            self.peak_value
+            drawdown
         )
 
     # ==============================================================
-    # VERIFICATION DU RISQUE
+    # PERTE QUOTIDIENNE
+    # ==============================================================
+
+    def CurrentDailyLoss(self):
+
+        if self.day_start_value <= 0:
+
+            return 0.0
+
+        current_value = (
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
+        )
+
+        loss = (
+            self.day_start_value
+            -
+            current_value
+        ) / self.day_start_value
+
+        return max(
+            0.0,
+            loss
+        )
+
+    # ==============================================================
+    # VERIFICATION DES LIMITES
     # ==============================================================
 
     def CheckRiskLimits(self):
 
+        # ----------------------------------------------------------
+        # SI DEJA BLOQUE
+        # ----------------------------------------------------------
+
+        if self.trading_locked:
+
+            return False
+
+        # ----------------------------------------------------------
+        # MISE A JOUR
+        # ----------------------------------------------------------
+
+        self.UpdatePeak()
+
+        # ----------------------------------------------------------
+        # PERTE JOURNALIERE
+        # ----------------------------------------------------------
+
         daily_loss = (
-            self.DailyLossPercent()
+            self.CurrentDailyLoss()
         )
-
-        drawdown = (
-            self.DrawdownPercent()
-        )
-
-        # ----------------------------------------------------------
-        # LIMITE JOURNALIERE
-        # ----------------------------------------------------------
 
         if (
             daily_loss
@@ -148,13 +146,28 @@ class RiskManager:
             self.config.MAX_DAILY_LOSS
         ):
 
-            self.locked = True
+            self.trading_locked = True
+
+            if self.config.DEBUG:
+
+                self.algorithm.Debug(
+                    "RISK LOCK | "
+                    "DAILY LOSS = %.2f%%"
+                    %
+                    (
+                        daily_loss * 100
+                    )
+                )
 
             return False
 
         # ----------------------------------------------------------
-        # DRAWDOWN MAXIMUM
+        # DRAWDOWN
         # ----------------------------------------------------------
+
+        drawdown = (
+            self.CurrentDrawdown()
+        )
 
         if (
             drawdown
@@ -162,30 +175,46 @@ class RiskManager:
             self.config.MAX_DRAWDOWN
         ):
 
-            self.locked = True
+            self.trading_locked = True
+
+            if self.config.DEBUG:
+
+                self.algorithm.Debug(
+                    "RISK LOCK | "
+                    "DRAWDOWN = %.2f%%"
+                    %
+                    (
+                        drawdown * 100
+                    )
+                )
 
             return False
 
         return True
 
     # ==============================================================
-    # ETAT DU SYSTEME
+    # CAPITAL DISPONIBLE
     # ==============================================================
 
-    def IsLocked(self):
+    def AvailableCapital(self):
 
-        return self.locked
+        return max(
+            0.0,
+            float(
+                self.algorithm.Portfolio
+                .MarginRemaining
+            )
+        )
 
     # ==============================================================
-    # CAPITAL A RISQUER
+    # RISQUE FINANCIER PAR TRADE
     # ==============================================================
 
     def RiskCapital(self):
 
-        portfolio_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
         return (
@@ -195,166 +224,7 @@ class RiskManager:
         )
 
     # ==============================================================
-    # DISTANCE DU STOP
-    # ==============================================================
-
-    def StopDistance(self, atr):
-
-        if atr <= 0:
-
-            return 0.0
-
-        return (
-            atr
-            *
-            self.config.STOP_ATR_MULTIPLIER
-        )
-
-    # ==============================================================
-    # QUANTITE SELON LE RISQUE
-    # ==============================================================
-
-    def QuantityFromRisk(
-        self,
-        price,
-        atr
-    ):
-
-        if price <= 0:
-
-            return 0
-
-        if atr <= 0:
-
-            return 0
-
-        stop_distance = (
-            self.StopDistance(
-                atr
-            )
-        )
-
-        if stop_distance <= 0:
-
-            return 0
-
-        risk_capital = (
-            self.RiskCapital()
-        )
-
-        # ----------------------------------------------------------
-        # FORMULE
-        #
-        # quantité =
-        # capital risqué / distance du stop
-        # ----------------------------------------------------------
-
-        raw_quantity = (
-            risk_capital
-            /
-            stop_distance
-        )
-
-        quantity = int(
-            raw_quantity
-        )
-
-        return max(
-            0,
-            quantity
-        )
-
-    # ==============================================================
-    # LIMITE DE VALEUR D'UNE POSITION
-    # ==============================================================
-
-    def MaxPositionQuantity(
-        self,
-        price
-    ):
-
-        if price <= 0:
-
-            return 0
-
-        portfolio_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
-        )
-
-        max_position_value = (
-            portfolio_value
-            *
-            self.config.MAX_POSITION_ALLOCATION
-        )
-
-        quantity = int(
-            max_position_value
-            /
-            price
-        )
-
-        return max(
-            0,
-            quantity
-        )
-
-    # ==============================================================
-    # CAPITAL ENCORE DISPONIBLE
-    # ==============================================================
-
-    def AvailablePortfolioQuantity(
-        self,
-        price
-    ):
-
-        if price <= 0:
-
-            return 0
-
-        portfolio_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
-        )
-
-        invested_value = (
-            float(
-                self.algorithm.Portfolio.TotalHoldingsValue
-            )
-        )
-
-        maximum_invested = (
-            portfolio_value
-            *
-            self.config.MAX_TOTAL_ALLOCATION
-        )
-
-        available_value = (
-            maximum_invested
-            -
-            invested_value
-        )
-
-        available_value = max(
-            0.0,
-            available_value
-        )
-
-        quantity = int(
-            available_value
-            /
-            price
-        )
-
-        return max(
-            0,
-            quantity
-        )
-
-    # ==============================================================
-    # QUANTITE FINALE
+    # CALCUL DE LA QUANTITE
     # ==============================================================
 
     def CalculateQuantity(
@@ -363,12 +233,56 @@ class RiskManager:
         atr
     ):
 
-        """
-        Calcule la quantité finale en appliquant
-        plusieurs limites simultanément.
-        """
+        # ----------------------------------------------------------
+        # VERIFICATIONS
+        # ----------------------------------------------------------
 
-        if self.IsLocked():
+        if price <= 0:
+
+            return 0
+
+        if atr <= 0:
+
+            return 0
+
+        if self.trading_locked:
+
+            return 0
+
+        # ----------------------------------------------------------
+        # CAPITAL
+        # ----------------------------------------------------------
+
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
+        )
+
+        if portfolio_value <= 0:
+
+            return 0
+
+        # ----------------------------------------------------------
+        # RISQUE MAXIMAL
+        # ----------------------------------------------------------
+
+        risk_capital = (
+            portfolio_value
+            *
+            self.config.RISK_PER_TRADE
+        )
+
+        # ----------------------------------------------------------
+        # DISTANCE DU STOP
+        # ----------------------------------------------------------
+
+        stop_distance = (
+            atr
+            *
+            self.config.STOP_ATR_MULTIPLIER
+        )
+
+        if stop_distance <= 0:
 
             return 0
 
@@ -376,31 +290,48 @@ class RiskManager:
         # QUANTITE BASEE SUR LE RISQUE
         # ----------------------------------------------------------
 
-        risk_quantity = (
-            self.QuantityFromRisk(
-                price,
-                atr
-            )
+        quantity_by_risk = int(
+            risk_capital
+            /
+            stop_distance
         )
 
+        if quantity_by_risk <= 0:
+
+            return 0
+
         # ----------------------------------------------------------
-        # LIMITE PAR POSITION
+        # LIMITE DE POSITION
         # ----------------------------------------------------------
 
-        position_limit = (
-            self.MaxPositionQuantity(
-                price
-            )
+        maximum_position_value = (
+            portfolio_value
+            *
+            self.config.MAX_POSITION_ALLOCATION
         )
 
+        quantity_by_allocation = int(
+            maximum_position_value
+            /
+            price
+        )
+
+        if quantity_by_allocation <= 0:
+
+            return 0
+
         # ----------------------------------------------------------
-        # LIMITE PORTEFEUILLE
+        # CAPITAL DISPONIBLE
         # ----------------------------------------------------------
 
-        portfolio_limit = (
-            self.AvailablePortfolioQuantity(
-                price
-            )
+        available_capital = (
+            self.AvailableCapital()
+        )
+
+        quantity_by_cash = int(
+            available_capital
+            /
+            price
         )
 
         # ----------------------------------------------------------
@@ -408,71 +339,89 @@ class RiskManager:
         # ----------------------------------------------------------
 
         quantity = min(
-            risk_quantity,
-            position_limit,
-            portfolio_limit
+
+            quantity_by_risk,
+
+            quantity_by_allocation,
+
+            quantity_by_cash
+
         )
 
         return max(
             0,
-            quantity
+            int(quantity)
         )
 
     # ==============================================================
-    # NOMBRE DE POSITIONS
+    # RISQUE THEORIQUE D'UNE POSITION
     # ==============================================================
 
-    def InvestedPositions(
+    def EstimatePositionRisk(
         self,
-        symbols
+        quantity,
+        atr
     ):
 
-        count = 0
+        if quantity <= 0:
 
-        for symbol in symbols:
+            return 0.0
 
-            if (
-                self.algorithm
-                .Portfolio[symbol]
-                .Invested
-            ):
+        if atr <= 0:
 
-                count += 1
+            return 0.0
 
-        return count
+        stop_distance = (
+            atr
+            *
+            self.config.STOP_ATR_MULTIPLIER
+        )
+
+        return (
+            abs(quantity)
+            *
+            stop_distance
+        )
 
     # ==============================================================
-    # PLACES DISPONIBLES
+    # POURCENTAGE DE RISQUE
     # ==============================================================
 
-    def AvailableSlots(
+    def EstimateRiskPercent(
         self,
-        symbols
+        quantity,
+        atr
     ):
 
-        current_positions = (
-            self.InvestedPositions(
-                symbols
-            )
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
-        return max(
-            0,
-            self.config.MAX_POSITIONS
-            -
-            current_positions
+        if portfolio_value <= 0:
+
+            return 0.0
+
+        risk = self.EstimatePositionRisk(
+            quantity,
+            atr
+        )
+
+        return (
+            risk
+            /
+            portfolio_value
         )
 
     # ==============================================================
-    # RAPPORT RISQUE
+    # INFORMATIONS DE RISQUE
     # ==============================================================
 
-    def RiskReport(self):
+    def GetRiskReport(self):
 
-        portfolio_value = (
-            float(
-                self.algorithm.Portfolio.TotalPortfolioValue
-            )
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
         return {
@@ -480,16 +429,19 @@ class RiskManager:
             "portfolio_value":
                 portfolio_value,
 
-            "risk_capital":
-                self.RiskCapital(),
+            "peak_value":
+                self.peak_value,
 
             "daily_loss":
-                self.DailyLossPercent(),
+                self.CurrentDailyLoss(),
 
             "drawdown":
-                self.DrawdownPercent(),
+                self.CurrentDrawdown(),
 
             "locked":
-                self.IsLocked()
+                self.trading_locked,
+
+            "risk_per_trade":
+                self.config.RISK_PER_TRADE
 
         }
