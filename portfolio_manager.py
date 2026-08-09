@@ -1,186 +1,169 @@
-"""
-Gestionnaire de portefeuille.
-
-Responsabilités :
-- compter les positions ouvertes ;
-- déterminer le nombre de places disponibles ;
-- classer les opportunités ;
-- éviter les concentrations excessives ;
-- sélectionner les meilleurs candidats ;
-- vérifier la capacité du portefeuille.
-
-Le PortfolioManager ne passe aucun ordre.
-"""
-
 from AlgorithmImports import *
+
+
+class PortfolioCandidate:
+
+    def __init__(
+        self,
+        symbol,
+        features,
+        score
+    ):
+
+        self.symbol = symbol
+
+        self.features = features
+
+        self.score = int(score)
 
 
 class PortfolioManager:
 
-    def __init__(self, algorithm, config):
+    def __init__(
+        self,
+        algorithm,
+        config
+    ):
 
         self.algorithm = algorithm
+
         self.config = config
 
     # ==============================================================
-    # POSITIONS ACTUELLEMENT OUVERTES
+    # NOMBRE DE POSITIONS ACTUELLES
     # ==============================================================
 
-    def GetInvestedSymbols(self, symbols):
+    def GetInvestedSymbols(self):
 
         invested = []
 
-        for symbol in symbols:
+        for symbol in self.algorithm.Securities.Keys:
 
-            if self.algorithm.Portfolio[symbol].Invested:
+            if self.algorithm.Portfolio[
+                symbol
+            ].Invested:
 
-                invested.append(symbol)
+                invested.append(
+                    symbol
+                )
 
         return invested
 
     # ==============================================================
-    # NOMBRE DE POSITIONS
+    # NOMBRE DE PLACES DISPONIBLES
     # ==============================================================
 
-    def GetPositionCount(self, symbols):
+    def GetAvailableSlots(
+        self,
+        symbols
+    ):
 
-        return len(
-            self.GetInvestedSymbols(
-                symbols
-            )
-        )
+        current_positions = 0
 
-    # ==============================================================
-    # PLACES DISPONIBLES
-    # ==============================================================
+        for symbol in symbols:
 
-    def GetAvailableSlots(self, symbols):
+            if self.algorithm.Portfolio[
+                symbol
+            ].Invested:
 
-        current_positions = (
-            self.GetPositionCount(
-                symbols
-            )
-        )
+                current_positions += 1
 
-        available = (
+        return max(
+            0,
             self.config.MAX_POSITIONS
             -
             current_positions
         )
 
-        return max(
-            0,
-            available
-        )
-
     # ==============================================================
-    # VALEUR DU PORTEFEUILLE
+    # CAPITAL ACTUELLEMENT INVESTI
     # ==============================================================
 
-    def PortfolioValue(self):
+    def GetInvestedCapital(self):
 
-        return float(
-            self.algorithm
-            .Portfolio
+        total = 0.0
+
+        for symbol in self.algorithm.Securities.Keys:
+
+            holding = (
+                self.algorithm.Portfolio[
+                    symbol
+                ]
+            )
+
+            if not holding.Invested:
+
+                continue
+
+            market_value = abs(
+                float(
+                    holding.HoldingsValue
+                )
+            )
+
+            total += market_value
+
+        return total
+
+    # ==============================================================
+    # EXPOSITION ACTUELLE
+    # ==============================================================
+
+    def GetCurrentExposure(self):
+
+        portfolio_value = float(
+            self.algorithm.Portfolio
             .TotalPortfolioValue
         )
 
-    # ==============================================================
-    # VALEUR INVESTIE
-    # ==============================================================
-
-    def InvestedValue(self):
-
-        return float(
-            self.algorithm
-            .Portfolio
-            .TotalHoldingsValue
-        )
-
-    # ==============================================================
-    # POURCENTAGE INVESTI
-    # ==============================================================
-
-    def InvestedPercent(self):
-
-        total = (
-            self.PortfolioValue()
-        )
-
-        if total <= 0:
+        if portfolio_value <= 0:
 
             return 0.0
 
-        invested = (
-            self.InvestedValue()
+        invested_capital = (
+            self.GetInvestedCapital()
         )
 
         return (
-            invested
+            invested_capital
             /
-            total
+            portfolio_value
         )
 
     # ==============================================================
-    # CAPITAL DISPONIBLE
+    # CAPITAL DISPONIBLE POUR DE NOUVELLES POSITIONS
     # ==============================================================
 
-    def AvailableCapital(self):
+    def GetAvailableAllocation(self):
 
-        total = (
-            self.PortfolioValue()
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
-        maximum_invested = (
-            total
+        if portfolio_value <= 0:
+
+            return 0.0
+
+        maximum_exposure = (
+            portfolio_value
             *
             self.config.MAX_TOTAL_ALLOCATION
         )
 
-        invested = (
-            self.InvestedValue()
+        invested_capital = (
+            self.GetInvestedCapital()
         )
 
         return max(
             0.0,
-            maximum_invested
+            maximum_exposure
             -
-            invested
+            invested_capital
         )
 
     # ==============================================================
-    # ALLOCATION D'UN ACTIF
-    # ==============================================================
-
-    def SymbolAllocation(
-        self,
-        symbol
-    ):
-
-        total = (
-            self.PortfolioValue()
-        )
-
-        if total <= 0:
-
-            return 0.0
-
-        holding_value = abs(
-            float(
-                self.algorithm
-                .Portfolio[symbol]
-                .HoldingsValue
-            )
-        )
-
-        return (
-            holding_value
-            /
-            total
-        )
-
-    # ==============================================================
-    # VERIFICATION DE CONCENTRATION
+    # VERIFICATION CAPITAL
     # ==============================================================
 
     def CanAddCapital(
@@ -193,24 +176,39 @@ class PortfolioManager:
 
             return False
 
+        if not self.algorithm.Securities[
+            symbol
+        ].HasData:
+
+            return False
+
         price = float(
-            self.algorithm
-            .Securities[symbol]
-            .Price
+            self.algorithm.Securities[
+                symbol
+            ].Price
         )
 
         if price <= 0:
 
             return False
 
-        position_value = (
-            quantity
+        # ----------------------------------------------------------
+        # VALEUR DE LA NOUVELLE POSITION
+        # ----------------------------------------------------------
+
+        new_position_value = (
+            abs(quantity)
             *
             price
         )
 
-        portfolio_value = (
-            self.PortfolioValue()
+        # ----------------------------------------------------------
+        # LIMITE D'UNE POSITION
+        # ----------------------------------------------------------
+
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
         )
 
         if portfolio_value <= 0:
@@ -223,22 +221,8 @@ class PortfolioManager:
             self.config.MAX_POSITION_ALLOCATION
         )
 
-        current_value = abs(
-            float(
-                self.algorithm
-                .Portfolio[symbol]
-                .HoldingsValue
-            )
-        )
-
-        final_value = (
-            current_value
-            +
-            position_value
-        )
-
         if (
-            final_value
+            new_position_value
             >
             maximum_position_value
         ):
@@ -246,33 +230,21 @@ class PortfolioManager:
             return False
 
         # ----------------------------------------------------------
-        # VERIFICATION DU PORTEFEUILLE GLOBAL
+        # EXPOSITION GLOBALE
         # ----------------------------------------------------------
 
-        invested_after = (
-            self.InvestedValue()
-            +
-            position_value
+        available = (
+            self.GetAvailableAllocation()
         )
 
-        maximum_total = (
-            portfolio_value
-            *
-            self.config.MAX_TOTAL_ALLOCATION
-        )
-
-        if (
-            invested_after
-            >
-            maximum_total
-        ):
+        if new_position_value > available:
 
             return False
 
         return True
 
     # ==============================================================
-    # PREPARATION DES CANDIDATS
+    # CONSTRUCTION DES CANDIDATS
     # ==============================================================
 
     def BuildCandidates(
@@ -290,27 +262,23 @@ class PortfolioManager:
             # POSITION DEJA OUVERTE
             # ------------------------------------------------------
 
-            if (
-                self.algorithm
-                .Portfolio[symbol]
-                .Invested
-            ):
-
-                continue
-
-            indicator = (
-                indicators.get(
-                    symbol
-                )
-            )
-
-            if indicator is None:
+            if self.algorithm.Portfolio[
+                symbol
+            ].Invested:
 
                 continue
 
             # ------------------------------------------------------
-            # INDICATEURS
+            # DONNEES
             # ------------------------------------------------------
+
+            if symbol not in indicators:
+
+                continue
+
+            indicator = indicators[
+                symbol
+            ]
 
             features = (
                 indicator.GetFeatures()
@@ -321,191 +289,193 @@ class PortfolioManager:
                 continue
 
             # ------------------------------------------------------
-            # ANALYSE
+            # PRIX MINIMUM
             # ------------------------------------------------------
 
-            analysis = (
-                signal_engine.Analyze(
-                    features,
-                    invested=False
-                )
+            price = float(
+                features["price"]
             )
 
-            # ------------------------------------------------------
-            # UNIQUEMENT LES ACHATS
-            # ------------------------------------------------------
-
-            if analysis["signal"].value != "BUY":
+            if (
+                price
+                <
+                self.config.MINIMUM_PRICE
+            ):
 
                 continue
 
             # ------------------------------------------------------
-            # CREATION DU CANDIDAT
+            # SIGNAL
             # ------------------------------------------------------
 
-            candidates.append({
+            if not signal_engine.ShouldEnter(
+                features
+            ):
 
-                "symbol":
+                continue
+
+            # ------------------------------------------------------
+            # SCORE
+            # ------------------------------------------------------
+
+            score = (
+                signal_engine.CalculateScore(
+                    features
+                )
+            )
+
+            if (
+                score
+                <
+                self.config.MIN_ENTRY_SCORE
+            ):
+
+                continue
+
+            candidates.append(
+                PortfolioCandidate(
                     symbol,
-
-                "score":
-                    analysis["score"],
-
-                "features":
                     features,
-
-                "reasons":
-                    analysis["reasons"]
-
-            })
+                    score
+                )
+            )
 
         return candidates
 
     # ==============================================================
-    # CLASSEMENT
-    # ==============================================================
-
-    def RankCandidates(
-        self,
-        candidates
-    ):
-
-        return sorted(
-
-            candidates,
-
-            key=lambda candidate:
-                candidate["score"],
-
-            reverse=True
-        )
-
-    # ==============================================================
-    # SELECTION
+    # SELECTION DES MEILLEURS CANDIDATS
     # ==============================================================
 
     def SelectCandidates(
         self,
         candidates,
-        slots=None
+        available_slots
     ):
 
         if not candidates:
 
             return []
 
-        # ----------------------------------------------------------
-        # NOMBRE DE PLACES
-        # ----------------------------------------------------------
-
-        if slots is None:
-
-            slots = (
-                self.config.MAX_POSITIONS
-            )
-
-        if slots <= 0:
+        if available_slots <= 0:
 
             return []
 
         # ----------------------------------------------------------
-        # CLASSEMENT
+        # TRI PAR SCORE
         # ----------------------------------------------------------
 
-        ranked = (
-            self.RankCandidates(
-                candidates
-            )
+        sorted_candidates = sorted(
+
+            candidates,
+
+            key=lambda candidate:
+                candidate.score,
+
+            reverse=True
+
         )
 
         # ----------------------------------------------------------
-        # SELECTION
+        # LIMITATION
         # ----------------------------------------------------------
 
-        selected = ranked[:slots]
+        selected = (
+            sorted_candidates[
+                :available_slots
+            ]
+        )
 
         return selected
 
     # ==============================================================
-    # MEILLEUR CANDIDAT
+    # RAPPORT PORTEFEUILLE
     # ==============================================================
 
-    def BestCandidate(
-        self,
-        candidates
-    ):
+    def GetPortfolioReport(self):
 
-        selected = (
-            self.SelectCandidates(
-                candidates,
-                1
+        portfolio_value = float(
+            self.algorithm.Portfolio
+            .TotalPortfolioValue
+        )
+
+        invested_capital = (
+            self.GetInvestedCapital()
+        )
+
+        exposure = (
+            self.GetCurrentExposure()
+        )
+
+        positions = []
+
+        for symbol in self.algorithm.Securities.Keys:
+
+            holding = (
+                self.algorithm.Portfolio[
+                    symbol
+                ]
             )
-        )
 
-        if not selected:
+            if not holding.Invested:
 
-            return None
+                continue
 
-        return selected[0]
+            positions.append({
 
-    # ==============================================================
-    # VERIFICATION DU PORTEFEUILLE
-    # ==============================================================
+                "symbol":
+                    symbol.Value,
 
-    def PortfolioHealth(self):
+                "quantity":
+                    holding.Quantity,
 
-        value = (
-            self.PortfolioValue()
-        )
+                "average_price":
+                    float(
+                        holding.AveragePrice
+                    ),
 
-        invested = (
-            self.InvestedValue()
-        )
+                "market_price":
+                    float(
+                        self.algorithm
+                        .Securities[
+                            symbol
+                        ].Price
+                    ),
 
-        allocation = 0.0
+                "unrealized_pnl":
+                    float(
+                        holding.UnrealizedProfit
+                    )
 
-        if value > 0:
-
-            allocation = (
-                invested
-                /
-                value
-            )
+            })
 
         return {
 
             "portfolio_value":
-                value,
+                portfolio_value,
 
-            "invested_value":
-                invested,
+            "invested_capital":
+                invested_capital,
 
-            "cash_available":
-                max(
-                    0.0,
-                    value - invested
-                ),
-
-            "allocation":
-                allocation,
+            "exposure":
+                exposure,
 
             "positions":
-                self.GetPositionCount(
-                    self.config.SYMBOLS
-                ),
+                positions
 
-            "max_positions":
-                self.config.MAX_POSITIONS
         }
 
     # ==============================================================
-    # RAPPORT
+    # AFFICHAGE DU RAPPORT
     # ==============================================================
 
     def PrintPortfolioReport(self):
 
-        health = (
-            self.PortfolioHealth()
+        if not self.config.DEBUG:
+
+            return
+
+        report = (
+            self.GetPortfolioReport()
         )
 
         self.algorithm.Debug(
@@ -513,18 +483,39 @@ class PortfolioManager:
             "PORTFOLIO | "
             "Value=%.2f | "
             "Invested=%.2f | "
-            "Allocation=%.2f%% | "
-            "Positions=%d/%d"
-            % (
+            "Exposure=%.2f%%"
+            %
+            (
+                report["portfolio_value"],
 
-                health["portfolio_value"],
+                report["invested_capital"],
 
-                health["invested_value"],
-
-                health["allocation"] * 100,
-
-                health["positions"],
-
-                health["max_positions"]
+                report["exposure"] * 100
             )
         )
+
+        for position in report[
+            "positions"
+        ]:
+
+            self.algorithm.Debug(
+
+                "POSITION | "
+                "%s | "
+                "Qty=%s | "
+                "Entry=%.2f | "
+                "Price=%.2f | "
+                "PnL=%.2f"
+                %
+                (
+                    position["symbol"],
+
+                    position["quantity"],
+
+                    position["average_price"],
+
+                    position["market_price"],
+
+                    position["unrealized_pnl"]
+                )
+            )
