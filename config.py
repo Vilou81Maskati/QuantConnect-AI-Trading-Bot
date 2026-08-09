@@ -1,84 +1,65 @@
-"""
-Configuration centrale du robot QuantConnect.
-
-Tous les paramètres de stratégie sont regroupés ici afin de
-faciliter les backtests et les futures optimisations.
-"""
+from AlgorithmImports import *
 
 
 class Config:
 
     # ==========================================================
-    # CAPITAL
+    # CAPITAL INITIAL
     # ==========================================================
 
     INITIAL_CASH = 100000
 
     # ==========================================================
-    # UNIVERS
+    # UNIVERS D'INVESTISSEMENT
     # ==========================================================
 
     SYMBOLS = [
-
         "SPY",
         "QQQ",
         "IWM",
         "DIA",
         "TLT"
-
     ]
 
     # ==========================================================
-    # INDICATEURS
+    # INDICATEURS PRINCIPAUX
     # ==========================================================
 
     EMA_FAST = 20
-
     EMA_SLOW = 50
 
     RSI_PERIOD = 14
-
     RSI_MIN = 45
-
     RSI_MAX = 70
-
     RSI_EXIT = 40
 
     ATR_PERIOD = 14
 
     ADX_PERIOD = 14
-
     ADX_MIN = 20
 
     MACD_FAST = 12
-
     MACD_SLOW = 26
-
     MACD_SIGNAL = 9
 
     ROC_PERIOD = 10
 
     VOLUME_PERIOD = 20
-
-    # ==========================================================
-    # VOLUME
-    # ==========================================================
-
     MIN_RELATIVE_VOLUME = 0.80
 
     # ==========================================================
-    # SCORE
+    # SCORE D'ENTREE
     # ==========================================================
 
     MIN_ENTRY_SCORE = 65
 
     # ==========================================================
-    # RISQUE PAR TRADE
+    # RISQUE PAR POSITION
     # ==========================================================
 
-    RISK_PER_TRADE = 0.005
+    # 0,50 % du portefeuille par trade
 
-    # 0.5 % du portefeuille
+    RISK_PER_TRADE = 0.005
 
     # ==========================================================
     # STOP LOSS
@@ -87,7 +68,7 @@ class Config:
     STOP_ATR_MULTIPLIER = 2.0
 
     # ==========================================================
-    # OBJECTIF
+    # TAKE PROFIT
     # ==========================================================
 
     TARGET_ATR_MULTIPLIER = 4.0
@@ -107,38 +88,81 @@ class Config:
     MAX_TOTAL_ALLOCATION = 0.90
 
     # ==========================================================
-    # NOMBRE DE POSITIONS
+    # NOMBRE MAXIMUM DE POSITIONS
     # ==========================================================
 
     MAX_POSITIONS = 3
 
     # ==========================================================
-    # PERTE MAXIMALE JOURNALIERE
+    # PROTECTION DU CAPITAL
     # ==========================================================
 
+    # Perte maximale journalière
     MAX_DAILY_LOSS = 0.02
 
-    # 2 %
-
-    # ==========================================================
-    # DRAWDOWN MAXIMUM
-    # ==========================================================
-
+    # Drawdown maximal du portefeuille
     MAX_DRAWDOWN = 0.15
 
-    # 15 %
-
     # ==========================================================
-    # PRIX MINIMUM
+    # FILTRE DE PRIX
     # ==========================================================
 
     MINIMUM_PRICE = 10
 
     # ==========================================================
-    # WARMUP
+    # INITIALISATION DES INDICATEURS
     # ==========================================================
 
     WARMUP_DAYS = 60
+
+    # ==========================================================
+    # REGIME DE MARCHE
+    # ==========================================================
+
+    REGIME_FAST_EMA = 50
+
+    REGIME_SLOW_EMA = 200
+
+    REGIME_RSI_PERIOD = 14
+
+    REGIME_ADX_PERIOD = 14
+
+    REGIME_BULL_RSI = 50
+
+    REGIME_BEAR_RSI = 45
+
+    REGIME_MIN_ADX = 18
+
+    # ----------------------------------------------------------
+    # Si False :
+    # le robot n'ouvre aucune nouvelle position en marché neutre.
+    # ----------------------------------------------------------
+
+    ALLOW_NEUTRAL_ENTRIES = False
+
+    # ==========================================================
+    # COUTS DE TRANSACTION
+    # ==========================================================
+
+    # Simulation de commission :
+    # 0,05 %
+
+    COMMISSION_RATE = 0.0005
+
+    # Simulation de slippage :
+    # 0,05 %
+
+    SLIPPAGE_RATE = 0.0005
+
+    # ==========================================================
+    # SECURITE
+    # ==========================================================
+
+    # Taille maximale théorique d'une position
+    MAX_POSITION_VALUE = 0.35
+
+    # Pourcentage maximum du portefeuille exposé
+    MAX_EXPOSURE = 0.90
 
     # ==========================================================
     # DEBUG
