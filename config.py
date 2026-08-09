@@ -1,91 +1,113 @@
-"""
-Configuration générale du robot
-"""
+class Config:
 
-# ==============================
-# CAPITAL
-# ==============================
+    # =========================
+    # PORTEFEUILLE
+    # =========================
 
-STARTING_CASH = 100000
+    INITIAL_CASH = 100000
 
-# ==============================
-# UNIVERS
-# ==============================
+    # =========================
+    # UNIVERS
+    # =========================
 
-SYMBOLS = [
+    SYMBOLS = [
+        "SPY",
+        "QQQ",
+        "DIA",
+        "IWM",
+        "TLT"
+    ]
 
-    "SPY",
-    "QQQ",
-    "DIA",
-    "IWM",
-    "TLT"
+    # =========================
+    # TIMEFRAME
+    # =========================
 
-]
+    RESOLUTION = "Hour"
 
-# ==============================
-# INDICATEURS
-# ==============================
+    # =========================
+    # INDICATEURS
+    # =========================
 
-EMA_FAST = 50
-EMA_SLOW = 200
+    EMA_FAST = 50
+    EMA_SLOW = 200
 
-RSI_PERIOD = 14
+    RSI_PERIOD = 14
 
-MACD_FAST = 12
-MACD_SLOW = 26
-MACD_SIGNAL = 9
+    MACD_FAST = 12
+    MACD_SLOW = 26
+    MACD_SIGNAL = 9
 
-ADX_PERIOD = 14
+    ADX_PERIOD = 14
 
-ATR_PERIOD = 14
+    ATR_PERIOD = 14
 
-VOLUME_PERIOD = 20
+    BB_PERIOD = 20
+    BB_STD = 2
 
-VWAP_PERIOD = 20
+    ROC_PERIOD = 20
 
-# ==============================
-# FILTRES
-# ==============================
+    STOCH_PERIOD = 14
+    STOCH_K = 3
+    STOCH_D = 3
 
-RSI_BUY = 55
-RSI_SELL = 45
+    VOLUME_PERIOD = 20
 
-ADX_MIN = 25
+    # =========================
+    # CONDITIONS D'ENTREE
+    # =========================
 
-# ==============================
-# GESTION DU RISQUE
-# ==============================
+    RSI_MIN = 55
+    RSI_MAX = 70
 
-RISK_PER_TRADE = 0.01
+    ADX_MIN = 20
 
-MAX_POSITIONS = 2
+    MIN_RELATIVE_VOLUME = 0.8
 
-MAX_PORTFOLIO_RISK = 0.10
+    # Score minimum pour autoriser
+    # une entrée
 
-# ATR
+    MIN_ENTRY_SCORE = 70
 
-STOP_ATR = 2.0
+    # =========================
+    # GESTION DU RISQUE
+    # =========================
 
-TARGET_ATR = 4.0
+    RISK_PER_TRADE = 0.005
 
-TRAILING_ATR = 2.5
+    MAX_POSITIONS = 2
 
-# ==============================
-# REBALANCING
-# ==============================
+    MAX_POSITION_ALLOCATION = 0.35
 
-REBALANCE_DAYS = 5
+    MAX_TOTAL_ALLOCATION = 0.90
 
-# ==============================
-# FILTRE DE MARCHE
-# ==============================
+    # =========================
+    # STOPS
+    # =========================
 
-MARKET_FILTER = "SPY"
+    STOP_ATR_MULTIPLIER = 2.0
 
-MARKET_EMA = 200
+    TARGET_ATR_MULTIPLIER = 4.0
 
-# ==============================
-# JOURNAL
-# ==============================
+    TRAILING_ATR_MULTIPLIER = 2.5
 
-DEBUG = True
+    # =========================
+    # PROTECTION DU PORTEFEUILLE
+    # =========================
+
+    MAX_DAILY_LOSS = 0.02
+
+    MAX_DRAWDOWN = 0.15
+
+    # =========================
+    # DONNEES
+    # =========================
+
+    WARMUP_DAYS = 260
+
+    MINIMUM_PRICE = 10
+
+    # =========================
+    # DEBUG
+    # =========================
+
+    DEBUG = True
